@@ -1,65 +1,37 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import MealCard from '../components/MealCard'
+import { hydrateMeals } from '../lib/mealFeed'
 import { supabase } from '../lib/supabase'
-import type { Meal, WastefulVote } from '../types'
-
-const baseSelect = '*, profiles(display_name, avatar_path), comments(*, profiles(display_name, avatar_path))'
-
-function attachVotes(meals: Meal[], votes: WastefulVote[]) {
-  return meals.map((meal) => ({
-    ...meal,
-    wasteful_votes: votes.filter((vote) => vote.meal_id === meal.id),
-  }))
-}
+import type { Meal } from '../types'
 
 export default function TimelinePage({ userId }: { userId: string }) {
   const [meals, setMeals] = useState<Meal[]>([])
   const [loading, setLoading] = useState(false)
   const [votingAvailable, setVotingAvailable] = useState(true)
-  const [voteError, setVoteError] = useState('')
+  const [error, setError] = useState('')
 
   async function load() {
     setLoading(true)
-    setVoteError('')
+    setError('')
 
     const mealResult = await supabase
       .from('meals')
-      .select(baseSelect)
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(50)
 
     if (mealResult.error) {
       setMeals([])
-      setVoteError(`食事の取得に失敗しました: ${mealResult.error.message}`)
+      setError(`食事の取得に失敗しました: ${mealResult.error.message}`)
       setLoading(false)
       return
     }
 
-    const baseMeals = (mealResult.data ?? []) as Meal[]
-
-    if (baseMeals.length === 0) {
-      setMeals([])
-      setVotingAvailable(true)
-      setLoading(false)
-      return
-    }
-
-    const mealIds = baseMeals.map((meal) => meal.id)
-    const voteResult = await supabase
-      .from('wasteful_votes')
-      .select('meal_id, user_id, created_at')
-      .in('meal_id', mealIds)
-
-    if (voteResult.error) {
-      setMeals(baseMeals.map((meal) => ({ ...meal, wasteful_votes: [] })))
-      setVotingAvailable(false)
-      setVoteError(`判定機能エラー: ${voteResult.error.message}`)
-    } else {
-      setMeals(attachVotes(baseMeals, (voteResult.data ?? []) as WastefulVote[]))
-      setVotingAvailable(true)
-    }
-
+    const hydrated = await hydrateMeals((mealResult.data ?? []) as Meal[])
+    setMeals(hydrated.meals)
+    setVotingAvailable(hydrated.votingAvailable)
+    setError(hydrated.voteError)
     setLoading(false)
   }
 
@@ -83,7 +55,7 @@ export default function TimelinePage({ userId }: { userId: string }) {
         <button className="icon-button" onClick={load} aria-label="更新"><RefreshCw size={20} className={loading ? 'spin' : ''} /></button>
       </header>
 
-      {voteError && <p className="form-message error">{voteError}</p>}
+      {error && <p className="form-message error">{error}</p>}
 
       <section className="feed">
         {meals.length
