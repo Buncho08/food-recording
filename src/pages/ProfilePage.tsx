@@ -14,10 +14,9 @@ export default function ProfilePage({ userId }: { userId: string }) {
   const [error, setError] = useState('')
 
   async function load() {
-    const [profileResult, mealCountResult, penaltyResult] = await Promise.all([
+    const [profileResult, mealResult] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', userId).single(),
-      supabase.from('meals').select('*', { count: 'exact', head: true }).eq('user_id', userId),
-      supabase.from('meals').select('id, wasteful_votes(user_id)').eq('user_id', userId),
+      supabase.from('meals').select('id').eq('user_id', userId),
     ])
 
     if (profileResult.data) {
@@ -25,11 +24,23 @@ export default function ProfilePage({ userId }: { userId: string }) {
       setName(profileResult.data.display_name)
     }
 
-    setMealCount(mealCountResult.count ?? 0)
+    const mealIds = (mealResult.data ?? []).map((meal) => meal.id)
+    setMealCount(mealIds.length)
+
+    if (mealIds.length === 0) {
+      setBeerCount(0)
+      return
+    }
+
+    const voteResult = await supabase
+      .from('wasteful_votes')
+      .select('meal_id')
+      .in('meal_id', mealIds)
+
     setBeerCount(
-      penaltyResult.error
+      voteResult.error
         ? 0
-        : (penaltyResult.data ?? []).filter((meal) => meal.wasteful_votes?.length > 0).length,
+        : new Set((voteResult.data ?? []).map((vote) => vote.meal_id)).size,
     )
   }
 
