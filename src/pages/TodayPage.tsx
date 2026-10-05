@@ -5,6 +5,8 @@ import MealCard from '../components/MealCard'
 import { supabase } from '../lib/supabase'
 import type { Meal, MealType } from '../types'
 
+const baseSelect = '*, profiles(display_name, avatar_path), comments(*, profiles(display_name, avatar_path))'
+
 const mealInfo: { type: MealType; label: string; emoji: string }[] = [
   { type: 'breakfast', label: '朝ごはん', emoji: '☀️' },
   { type: 'lunch', label: '昼ごはん', emoji: '🍙' },
@@ -22,23 +24,38 @@ export default function TodayPage({ userId }: { userId: string }) {
   const [meals, setMeals] = useState<Meal[]>([])
   const [composer, setComposer] = useState<MealType | null>(null)
   const [beerCount, setBeerCount] = useState(0)
+  const [votingAvailable, setVotingAvailable] = useState(true)
 
   async function load() {
-    const [{ data }, { data: penaltyMeals }] = await Promise.all([
-      supabase
-        .from('meals')
-        .select('*, profiles(display_name, avatar_path), comments(*, profiles(display_name, avatar_path)), wasteful_votes(user_id)')
-        .eq('user_id', userId)
-        .eq('meal_date', date)
-        .order('created_at', { ascending: false }),
-      supabase
+    const withVotes = await supabase
+      .from('meals')
+      .select(`${baseSelect}, wasteful_votes(user_id)`)
+      .eq('user_id', userId)
+      .eq('meal_date', date)
+      .order('created_at', { ascending: false })
+
+    if (!withVotes.error) {
+      const penaltyMeals = await supabase
         .from('meals')
         .select('id, wasteful_votes(user_id)')
-        .eq('user_id', userId),
-    ])
+        .eq('user_id', userId)
 
-    setMeals((data ?? []) as Meal[])
-    setBeerCount((penaltyMeals ?? []).filter((meal) => meal.wasteful_votes?.length > 0).length)
+      setMeals((withVotes.data ?? []) as Meal[])
+      setBeerCount((penaltyMeals.data ?? []).filter((meal) => meal.wasteful_votes?.length > 0).length)
+      setVotingAvailable(true)
+      return
+    }
+
+    const fallback = await supabase
+      .from('meals')
+      .select(baseSelect)
+      .eq('user_id', userId)
+      .eq('meal_date', date)
+      .order('created_at', { ascending: false })
+
+    setMeals((fallback.data ?? []) as Meal[])
+    setBeerCount(0)
+    setVotingAvailable(false)
   }
 
   useEffect(() => { load() }, [date, userId])
@@ -67,10 +84,14 @@ export default function TodayPage({ userId }: { userId: string }) {
         })}
       </section>
 
+      {!votingAvailable && (
+        <p className="form-message">食事記録は利用できます。無駄な外食判定はSupabaseの追加SQL適用後に有効になります。</p>
+      )}
+
       <div className="section-title"><div><p className="eyebrow">MY RECORD</p><h2>今日の記録</h2></div></div>
       <section className="feed">
         {meals.length
-          ? meals.map((meal) => <MealCard key={meal.id} meal={meal} currentUserId={userId} onChanged={load} compact />)
+          ? meals.map((meal) => <MealCard key={meal.id} meal={meal} currentUserId={userId} onChanged={load} compact votingAvailable={votingAvailable} />)
           : <div className="empty-state"><span>🍽️</span><strong>まだ何も食べてない…？</strong><p>食べたら忘れる前に記録してください。</p></div>}
       </section>
 
