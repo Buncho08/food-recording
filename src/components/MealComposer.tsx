@@ -25,6 +25,7 @@ export default function MealComposer({ userId, mealType, date, onClose, onSaved 
       setPreview(null)
       return
     }
+
     const url = URL.createObjectURL(file)
     setPreview(url)
     return () => URL.revokeObjectURL(url)
@@ -35,11 +36,15 @@ export default function MealComposer({ userId, mealType, date, onClose, onSaved 
     setBusy(true)
     setError('')
     let imagePath: string | null = null
+
     try {
       if (file) {
         const image = await compressImage(file)
         imagePath = `${userId}/${crypto.randomUUID()}.jpg`
-        const { error: uploadError } = await supabase.storage.from('meal-images').upload(imagePath, image, { contentType: 'image/jpeg', upsert: false })
+        const { error: uploadError } = await supabase.storage
+          .from('meal-images')
+          .upload(imagePath, image, { contentType: 'image/jpeg', upsert: false })
+
         if (uploadError) throw uploadError
       }
 
@@ -51,7 +56,9 @@ export default function MealComposer({ userId, mealType, date, onClose, onSaved 
         note: note.trim() || null,
         image_path: imagePath,
       })
+
       if (insertError) throw insertError
+
       onSaved()
       onClose()
     } catch (err) {
@@ -65,16 +72,33 @@ export default function MealComposer({ userId, mealType, date, onClose, onSaved 
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <section className="sheet" onClick={(e) => e.stopPropagation()}>
-        <header className="sheet-header"><div><p className="eyebrow">{date}</p><h2>{mealLabels[mealType]}</h2></div><button className="icon-button" onClick={onClose}><X /></button></header>
+        <header className="sheet-header">
+          <div><p className="eyebrow">{date}</p><h2>{mealLabels[mealType]}</h2></div>
+          <button className="icon-button" onClick={onClose}><X /></button>
+        </header>
+
         <form className="stack-form" onSubmit={submit}>
           <label className="photo-picker">
-            {preview ? <img src={preview} alt="選択した食事" /> : <><Camera size={28} /><strong>写真を追加</strong><span>カメラ・フォトライブラリ</span></>}
-            <input type="file" accept="image/*" capture="environment" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            {preview
+              ? <img src={preview} alt="選択した食事" />
+              : <><Camera size={28} /><strong>写真を追加</strong><span>写真を撮る・フォトライブラリから選ぶ</span></>}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                setError('')
+                setFile(e.target.files?.[0] ?? null)
+              }}
+            />
           </label>
+
           <label>食べたもの<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例：鮭おにぎりと味噌汁" required /></label>
           <label>ひとこと<textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="量、気分、店名など（任意）" rows={3} /></label>
+
           {error && <p className="form-message error">{error}</p>}
-          <button className="primary-button" disabled={busy}>{busy ? <Loader2 className="spin" size={18} /> : '記録する'}</button>
+          <button className="primary-button" disabled={busy}>
+            {busy ? <Loader2 className="spin" size={18} /> : '記録する'}
+          </button>
         </form>
       </section>
     </div>
