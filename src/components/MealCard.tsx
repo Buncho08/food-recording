@@ -16,23 +16,50 @@ export default function MealCard({ meal, currentUserId, onChanged, compact = fal
   const [busy, setBusy] = useState(false)
   const imageUrl = publicStorageUrl('meal-images', meal.image_path)
   const isOwner = meal.user_id === currentUserId
-  const time = useMemo(() => new Intl.DateTimeFormat('ja-JP', { hour: '2-digit', minute: '2-digit' }).format(new Date(meal.created_at)), [meal.created_at])
+  const votes = meal.wasteful_votes ?? []
+  const hasPenalty = votes.length > 0
+  const votedByMe = votes.some((vote) => vote.user_id === currentUserId)
+  const time = useMemo(
+    () => new Intl.DateTimeFormat('ja-JP', { hour: '2-digit', minute: '2-digit' }).format(new Date(meal.created_at)),
+    [meal.created_at],
+  )
 
-  async function toggleWaste() {
-    if (!isOwner) return
+  async function toggleWasteVote() {
+    if (isOwner || busy) return
+
     setBusy(true)
-    await supabase.from('meals').update({ is_wasteful_outing: !meal.is_wasteful_outing }).eq('id', meal.id)
-    setBusy(false)
-    onChanged()
+    try {
+      if (votedByMe) {
+        const { error } = await supabase
+          .from('wasteful_votes')
+          .delete()
+          .eq('meal_id', meal.id)
+          .eq('user_id', currentUserId)
+
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('wasteful_votes')
+          .insert({ meal_id: meal.id, user_id: currentUserId })
+
+        if (error) throw error
+      }
+
+      onChanged()
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function addComment(e: FormEvent) {
     e.preventDefault()
     const body = comment.trim()
     if (!body) return
+
     setBusy(true)
     const { error } = await supabase.from('comments').insert({ meal_id: meal.id, user_id: currentUserId, body })
     setBusy(false)
+
     if (!error) {
       setComment('')
       onChanged()
@@ -42,26 +69,49 @@ export default function MealCard({ meal, currentUserId, onChanged, compact = fal
   return (
     <article className={`meal-card ${compact ? 'compact' : ''}`}>
       <header className="meal-card-head">
-        <div className="author"><Avatar name={meal.profiles?.display_name} path={meal.profiles?.avatar_path} size={38} /><div><strong>{meal.profiles?.display_name || 'ユーザー'}</strong><span>{meal.meal_date} · {mealLabels[meal.meal_type]} · {time}</span></div></div>
-        {meal.is_wasteful_outing && <span className="beer-penalty"><Beer size={15} /> 1杯</span>}
+        <div className="author">
+          <Avatar name={meal.profiles?.display_name} path={meal.profiles?.avatar_path} size={38} />
+          <div>
+            <strong>{meal.profiles?.display_name || 'ユーザー'}</strong>
+            <span>{meal.meal_date} · {mealLabels[meal.meal_type]} · {time}</span>
+          </div>
+        </div>
+        {hasPenalty && <span className="beer-penalty"><Beer size={15} /> 1杯 · {votes.length}票</span>}
       </header>
 
-      {imageUrl ? <img className="meal-photo" src={imageUrl} alt={meal.title} loading="lazy" /> : <div className="meal-photo placeholder"><UtensilsCrossed /></div>}
+      {imageUrl
+        ? <img className="meal-photo" src={imageUrl} alt={meal.title} loading="lazy" />
+        : <div className="meal-photo placeholder"><UtensilsCrossed /></div>}
 
       <div className="meal-body">
         <h3>{meal.title}</h3>
         {meal.note && <p>{meal.note}</p>}
-        <button className={`waste-button ${meal.is_wasteful_outing ? 'marked' : ''}`} onClick={toggleWaste} disabled={!isOwner || busy} title={isOwner ? '' : '判定は投稿者本人が変更できます'}>
-          <Beer size={18} /> {meal.is_wasteful_outing ? '無駄な外食：判定済み' : '無駄な外食だった'}
+
+        <button
+          className={`waste-button ${votedByMe ? 'marked' : ''}`}
+          onClick={toggleWasteVote}
+          disabled={isOwner || busy}
+          title={isOwner ? '自分の食事には判定できません' : votedByMe ? 'もう一度押すと取り消せます' : 'この食事を無駄な外食と判定'}
+        >
+          <Beer size={18} />
+          {isOwner
+            ? hasPenalty ? `友達から無駄な外食判定（${votes.length}票）` : '友達の判定待ち'
+            : votedByMe ? '無駄な外食判定を取り消す' : '無駄な外食！'}
         </button>
       </div>
 
       <div className="comments">
         <div className="comment-title"><MessageCircle size={17} /><span>{meal.comments?.length ?? 0} コメント</span></div>
         {(meal.comments ?? []).map((c) => (
-          <div className="comment" key={c.id}><Avatar name={c.profiles?.display_name} path={c.profiles?.avatar_path} size={28} /><p><strong>{c.profiles?.display_name || 'ユーザー'}</strong> {c.body}</p></div>
+          <div className="comment" key={c.id}>
+            <Avatar name={c.profiles?.display_name} path={c.profiles?.avatar_path} size={28} />
+            <p><strong>{c.profiles?.display_name || 'ユーザー'}</strong> {c.body}</p>
+          </div>
         ))}
-        <form onSubmit={addComment} className="comment-form"><input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="コメントする" maxLength={300} /><button disabled={busy || !comment.trim()}><Send size={17} /></button></form>
+        <form onSubmit={addComment} className="comment-form">
+          <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="コメントする" maxLength={300} />
+          <button disabled={busy || !comment.trim()}><Send size={17} /></button>
+        </form>
       </div>
     </article>
   )
