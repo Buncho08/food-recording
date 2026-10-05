@@ -1,9 +1,9 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, ReactNode, useState } from 'react'
 import { Beer, Loader2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 type Props = {
-  children: React.ReactNode
+  children: ReactNode
   signedIn: boolean
   loading: boolean
 }
@@ -16,9 +16,7 @@ export default function AuthGate({ children, signedIn, loading }: Props) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
 
-  if (loading) {
-    return <div className="screen-center"><Loader2 className="spin" size={28} /></div>
-  }
+  if (loading) return <div className="screen-center"><Loader2 className="spin" size={28} /></div>
   if (signedIn) return children
 
   async function submit(e: FormEvent) {
@@ -52,16 +50,12 @@ export default function AuthGate({ children, signedIn, loading }: Props) {
         <p className="eyebrow">FOOD CHECK WITH FRIENDS</p>
         <h1>めしログ</h1>
         <p className="muted">朝・昼・晩を残して、無駄な外食はビール1杯。</p>
-
         <div className="segmented auth-segment">
           <button className={mode === 'signin' ? 'active' : ''} onClick={() => setMode('signin')}>ログイン</button>
           <button className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>新規登録</button>
         </div>
-
         <form onSubmit={submit} className="stack-form">
-          {mode === 'signup' && (
-            <label>表示名<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="ぶんちょう" required /></label>
-          )}
+          {mode === 'signup' && <label>表示名<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="ぶんちょう" required /></label>}
           <label>メール<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required /></label>
           <label>パスワード<input type="password" minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="6文字以上" required /></label>
           <button className="primary-button" disabled={busy}>{busy ? <Loader2 className="spin" size={18} /> : mode === 'signin' ? 'ログインする' : '登録する'}</button>
