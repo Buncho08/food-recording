@@ -14,19 +14,23 @@ export default function ProfilePage({ userId }: { userId: string }) {
   const [error, setError] = useState('')
 
   async function load() {
-    const [{ data }, { data: penaltyMeals }, { count: meals }] = await Promise.all([
+    const [profileResult, mealCountResult, penaltyResult] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', userId).single(),
-      supabase.from('meals').select('id, wasteful_votes(user_id)').eq('user_id', userId),
       supabase.from('meals').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+      supabase.from('meals').select('id, wasteful_votes(user_id)').eq('user_id', userId),
     ])
 
-    if (data) {
-      setProfile(data)
-      setName(data.display_name)
+    if (profileResult.data) {
+      setProfile(profileResult.data)
+      setName(profileResult.data.display_name)
     }
 
-    setBeerCount((penaltyMeals ?? []).filter((meal) => meal.wasteful_votes?.length > 0).length)
-    setMealCount(meals ?? 0)
+    setMealCount(mealCountResult.count ?? 0)
+    setBeerCount(
+      penaltyResult.error
+        ? 0
+        : (penaltyResult.data ?? []).filter((meal) => meal.wasteful_votes?.length > 0).length,
+    )
   }
 
   useEffect(() => { load() }, [userId])
