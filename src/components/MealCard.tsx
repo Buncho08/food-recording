@@ -6,11 +6,12 @@ import type { Meal } from '../types'
 
 const mealLabels = { breakfast: '朝', lunch: '昼', dinner: '晩' }
 
-export default function MealCard({ meal, currentUserId, onChanged, compact = false }: {
+export default function MealCard({ meal, currentUserId, onChanged, compact = false, votingAvailable = true }: {
   meal: Meal
   currentUserId: string
   onChanged: () => void
   compact?: boolean
+  votingAvailable?: boolean
 }) {
   const [comment, setComment] = useState('')
   const [busy, setBusy] = useState(false)
@@ -25,7 +26,7 @@ export default function MealCard({ meal, currentUserId, onChanged, compact = fal
   )
 
   async function toggleWasteVote() {
-    if (isOwner || busy) return
+    if (isOwner || busy || !votingAvailable) return
 
     setBusy(true)
     try {
@@ -35,16 +36,13 @@ export default function MealCard({ meal, currentUserId, onChanged, compact = fal
           .delete()
           .eq('meal_id', meal.id)
           .eq('user_id', currentUserId)
-
         if (error) throw error
       } else {
         const { error } = await supabase
           .from('wasteful_votes')
           .insert({ meal_id: meal.id, user_id: currentUserId })
-
         if (error) throw error
       }
-
       onChanged()
     } finally {
       setBusy(false)
@@ -65,6 +63,12 @@ export default function MealCard({ meal, currentUserId, onChanged, compact = fal
       onChanged()
     }
   }
+
+  const voteLabel = !votingAvailable
+    ? '無駄な外食判定：準備中'
+    : isOwner
+      ? hasPenalty ? `友達から無駄な外食判定（${votes.length}票）` : '友達の判定待ち'
+      : votedByMe ? '無駄な外食判定を取り消す' : '無駄な外食！'
 
   return (
     <article className={`meal-card ${compact ? 'compact' : ''}`}>
@@ -90,13 +94,10 @@ export default function MealCard({ meal, currentUserId, onChanged, compact = fal
         <button
           className={`waste-button ${votedByMe ? 'marked' : ''}`}
           onClick={toggleWasteVote}
-          disabled={isOwner || busy}
-          title={isOwner ? '自分の食事には判定できません' : votedByMe ? 'もう一度押すと取り消せます' : 'この食事を無駄な外食と判定'}
+          disabled={!votingAvailable || isOwner || busy}
+          title={!votingAvailable ? 'Supabaseの投票用テーブル作成後に利用できます' : isOwner ? '自分の食事には判定できません' : votedByMe ? 'もう一度押すと取り消せます' : 'この食事を無駄な外食と判定'}
         >
-          <Beer size={18} />
-          {isOwner
-            ? hasPenalty ? `友達から無駄な外食判定（${votes.length}票）` : '友達の判定待ち'
-            : votedByMe ? '無駄な外食判定を取り消す' : '無駄な外食！'}
+          <Beer size={18} /> {voteLabel}
         </button>
       </div>
 
