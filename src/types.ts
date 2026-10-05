@@ -16,6 +16,12 @@ export type Comment = {
   profiles?: Pick<Profile, 'display_name' | 'avatar_path'> | null
 }
 
+export type WastefulVote = {
+  meal_id: string
+  user_id: string
+  created_at?: string
+}
+
 export type Meal = {
   id: string
   user_id: string
@@ -24,9 +30,9 @@ export type Meal = {
   title: string
   note: string | null
   image_path: string | null
-  is_wasteful_outing: boolean
   created_at: string
   updated_at: string
   profiles?: Pick<Profile, 'display_name' | 'avatar_path'> | null
   comments?: Comment[]
+  wasteful_votes?: WastefulVote[]
 }
