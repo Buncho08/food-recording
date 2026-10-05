@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Beer, Plus } from 'lucide-react'
 import MealComposer from '../components/MealComposer'
 import MealCard from '../components/MealCard'
+import { hydrateMeals } from '../lib/mealFeed'
 import { supabase } from '../lib/supabase'
-import type { Meal, MealType, WastefulVote } from '../types'
-
-const baseSelect = '*, profiles(display_name, avatar_path), comments(*, profiles(display_name, avatar_path))'
+import type { Meal, MealType } from '../types'
 
 const mealInfo: { type: MealType; label: string; emoji: string }[] = [
   { type: 'breakfast', label: '朝ごはん', emoji: '☀️' },
@@ -19,13 +18,6 @@ function todayString() {
   return new Date(d.getTime() - tzOffset).toISOString().slice(0, 10)
 }
 
-function attachVotes(meals: Meal[], votes: WastefulVote[]) {
-  return meals.map((meal) => ({
-    ...meal,
-    wasteful_votes: votes.filter((vote) => vote.meal_id === meal.id),
-  }))
-}
-
 export default function TodayPage({ userId }: { userId: string }) {
   const date = useMemo(todayString, [])
   const [meals, setMeals] = useState<Meal[]>([])
@@ -37,7 +29,7 @@ export default function TodayPage({ userId }: { userId: string }) {
     const [todayResult, allMealsResult] = await Promise.all([
       supabase
         .from('meals')
-        .select(baseSelect)
+        .select('*')
         .eq('user_id', userId)
         .eq('meal_date', date)
         .order('created_at', { ascending: false }),
@@ -48,33 +40,27 @@ export default function TodayPage({ userId }: { userId: string }) {
     ])
 
     const todayMeals = (todayResult.data ?? []) as Meal[]
-    const allMealIds = (allMealsResult.data ?? []).map((meal) => meal.id)
+    const hydrated = await hydrateMeals(todayMeals)
 
+    setMeals(hydrated.meals)
+    setVotingAvailable(hydrated.votingAvailable)
+
+    const allMealIds = (allMealsResult.data ?? []).map((meal) => meal.id)
     if (allMealIds.length === 0) {
-      setMeals(todayMeals.map((meal) => ({ ...meal, wasteful_votes: [] })))
       setBeerCount(0)
-      setVotingAvailable(true)
       return
     }
 
     const voteResult = await supabase
       .from('wasteful_votes')
-      .select('meal_id, user_id, created_at')
+      .select('meal_id')
       .in('meal_id', allMealIds)
 
-    if (voteResult.error) {
-      setMeals(todayMeals.map((meal) => ({ ...meal, wasteful_votes: [] })))
-      setBeerCount(0)
-      setVotingAvailable(false)
-      return
-    }
-
-    const votes = (voteResult.data ?? []) as WastefulVote[]
-    const todayIds = new Set(todayMeals.map((meal) => meal.id))
-
-    setMeals(attachVotes(todayMeals, votes.filter((vote) => todayIds.has(vote.meal_id))))
-    setBeerCount(new Set(votes.map((vote) => vote.meal_id)).size)
-    setVotingAvailable(true)
+    setBeerCount(
+      voteResult.error
+        ? 0
+        : new Set((voteResult.data ?? []).map((vote) => vote.meal_id)).size,
+    )
   }
 
   useEffect(() => { load() }, [date, userId])
